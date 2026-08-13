@@ -1,0 +1,30 @@
+import type { Product } from '@/types/api'
+
+export interface CartLine {
+  product: Product
+  qty: number
+}
+
+export function addByBarcode(lines: CartLine[], product: Product): CartLine[] {
+  const existing = lines.find((l) => l.product.id === product.id)
+  if (existing) {
+    return lines.map((l) => (l.product.id === product.id ? { ...l, qty: l.qty + 1 } : l))
+  }
+  return [...lines, { product, qty: 1 }]
+}
+
+export function changeQty(lines: CartLine[], productId: string, delta: number): CartLine[] {
+  return lines.flatMap((l) => {
+    if (l.product.id !== productId) return [l]
+    const qty = l.qty + delta
+    if (qty <= 0) return []
+    return [{ ...l, qty }]
+  })
+}
+
+export function totals(lines: CartLine[]) {
+  return {
+    qty: lines.reduce((sum, l) => sum + l.qty, 0),
+    amount: lines.reduce((sum, l) => sum + l.qty * (l.product.sellingPrice ?? 0), 0),
+  }
+}
