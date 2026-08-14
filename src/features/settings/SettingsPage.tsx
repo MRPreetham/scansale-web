@@ -39,6 +39,10 @@ export function SettingsPage() {
   const { user } = useAuth()
   const [orgName, setOrgName] = useState('')
   const [currency, setCurrency] = useState('')
+  const [address, setAddress] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [gstin, setGstin] = useState('')
   const [users, setUsers] = useState<OrgUser[]>([])
   const [addOpen, setAddOpen] = useState(false)
   const [newUser, setNewUser] = useState({ email: '', name: '', password: '', role: 'SALES' })
@@ -49,6 +53,10 @@ export function SettingsPage() {
       const [s, u] = await Promise.all([orgApi.settings(), orgApi.users()])
       setOrgName(s.orgName)
       setCurrency(s.currency)
+      setAddress(s.address ?? '')
+      setPhone(s.phone ?? '')
+      setEmail(s.email ?? '')
+      setGstin(s.gstin ?? '')
       setUsers(u)
     } catch (error) {
       toast.error(messageFromError(error))
@@ -63,9 +71,13 @@ export function SettingsPage() {
     event.preventDefault()
     setSaving(true)
     try {
-      const updated = await orgApi.updateSettings(orgName, currency)
+      const updated = await orgApi.updateSettings({ orgName, currency, address, phone, email, gstin })
       setOrgName(updated.orgName)
       setCurrency(updated.currency)
+      setAddress(updated.address ?? '')
+      setPhone(updated.phone ?? '')
+      setEmail(updated.email ?? '')
+      setGstin(updated.gstin ?? '')
       toast.success('Settings saved')
     } catch (error) {
       toast.error(messageFromError(error))
@@ -125,6 +137,22 @@ export function SettingsPage() {
             <div className="space-y-1.5">
               <Label>Currency</Label>
               <Input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} maxLength={10} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Address</Label>
+              <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Shop address (shown on invoice)" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Phone</Label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email</Label>
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>GSTIN</Label>
+              <Input value={gstin} onChange={(e) => setGstin(e.target.value)} />
             </div>
             <Button type="submit" disabled={saving}>
               {saving ? 'Saving…' : 'Save settings'}

@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useAsync } from '@/lib/useAsync'
+import { dateISO } from '@/lib/date'
 import { reportApi } from '@/api/endpoints'
 import { useAuth } from '@/auth/context'
 import { formatMoney } from '@/lib/money'
 import type { DailyReport } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
@@ -16,28 +18,74 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 export function ReportsPage() {
   const { user } = useAuth()
-  const [date, setDate] = useState(today())
-  const { data: report, loading, reload } = useAsync<DailyReport>(
-    () => reportApi.daily(date),
-    [date],
+  const [preset, setPreset] = useState<'today' | '7d' | '30d' | 'custom'>('today')
+  const [from, setFrom] = useState(dateISO())
+  const [to, setTo] = useState(dateISO())
+  const [range, setRange] = useState<{ from: string; to: string }>({ from: dateISO(), to: dateISO() })
+  const { data: report, loading } = useAsync<DailyReport>(
+    () => reportApi.period(range.from, range.to),
+    [range],
   )
 
   const breakdown = report ? Object.entries(report.paymentBreakdown) : []
 
+  function applyRange(fromDate: string, toDate: string, nextPreset: typeof preset) {
+    setFrom(fromDate)
+    setTo(toDate)
+    setPreset(nextPreset)
+    setRange({ from: fromDate, to: toDate })
+  }
+
+  const presets: { key: typeof preset; label: string }[] = [
+    { key: 'today', label: 'Today' },
+    { key: '7d', label: 'Last 7 days' },
+    { key: '30d', label: 'Last 30 days' },
+    { key: 'custom', label: 'Custom' },
+  ]
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
-        <Button variant="outline" onClick={reload} disabled={loading}>
-          {loading ? 'Loading…' : 'Refresh'}
-        </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        {presets.map((p) => (
+          <Button
+            key={p.key}
+            variant={preset === p.key ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => {
+              if (p.key === 'today') applyRange(dateISO(), dateISO(), 'today')
+              else if (p.key === '7d') applyRange(dateISO(-6), dateISO(), '7d')
+              else if (p.key === '30d') applyRange(dateISO(-29), dateISO(), '30d')
+              else setPreset('custom')
+            }}
+          >
+            {p.label}
+          </Button>
+        ))}
       </div>
+
+      {preset === 'custom' && (
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-1.5">
+            <Label>From</Label>
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-44" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>To</Label>
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-44" />
+          </div>
+          <Button onClick={() => setRange({ from, to })} disabled={loading}>
+            {loading ? 'Generating…' : 'Generate report'}
+          </Button>
+        </div>
+      )}
+
+      {report && (
+        <span className="text-sm text-muted-foreground">
+          Showing: {report.date}
+        </span>
+      )}
 
       {report && (
         <>
@@ -90,7 +138,7 @@ export function ReportsPage() {
                   {report.rows.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="h-20 text-center text-muted-foreground">
-                        No activity on this day
+                        No activity in this period
                       </TableCell>
                     </TableRow>
                   ) : (

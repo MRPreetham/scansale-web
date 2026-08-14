@@ -8,7 +8,9 @@ export interface CartLine {
 export function addByBarcode(lines: CartLine[], product: Product): CartLine[] {
   const existing = lines.find((l) => l.product.id === product.id)
   if (existing) {
-    return lines.map((l) => (l.product.id === product.id ? { ...l, qty: l.qty + 1 } : l))
+    const max = product.availableQty ?? Number.MAX_SAFE_INTEGER
+    const qty = Math.min(existing.qty + 1, max)
+    return lines.map((l) => (l.product.id === product.id ? { ...l, qty } : l))
   }
   return [...lines, { product, qty: 1 }]
 }
@@ -16,7 +18,8 @@ export function addByBarcode(lines: CartLine[], product: Product): CartLine[] {
 export function changeQty(lines: CartLine[], productId: string, delta: number): CartLine[] {
   return lines.flatMap((l) => {
     if (l.product.id !== productId) return [l]
-    const qty = l.qty + delta
+    const max = l.product.availableQty ?? Number.MAX_SAFE_INTEGER
+    const qty = Math.min(l.qty + delta, max)
     if (qty <= 0) return []
     return [{ ...l, qty }]
   })

@@ -1,17 +1,25 @@
 import { useCallback, useRef, useState } from 'react'
-import { Minus, Plus, Trash2 } from 'lucide-react'
+import { Minus, Plus, Printer, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { messageFromError } from '@/api/client'
 import { productApi, saleApi } from '@/api/endpoints'
 import { useAuth } from '@/auth/context'
 import { formatMoney } from '@/lib/money'
 import { addByBarcode as addToCart, changeQty as changeCartQty, totals, type CartLine } from '@/features/pos/cart'
-import type { PaymentMode } from '@/types/api'
+import type { PaymentMode, Sale } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { InvoiceView } from '@/features/invoice/InvoiceView'
 
 const PAYMENT_MODES: PaymentMode[] = ['CASH', 'UPI', 'CARD', 'CREDIT']
 
@@ -22,6 +30,8 @@ export function POSPage() {
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH')
   const [saving, setSaving] = useState(false)
   const [lookupError, setLookupError] = useState('')
+  const [lastSale, setLastSale] = useState<Sale | null>(null)
+  const [invoiceOpen, setInvoiceOpen] = useState(false)
   const barcodeRef = useRef<HTMLInputElement>(null)
 
   const addByCode = useCallback(
@@ -58,6 +68,8 @@ export function POSPage() {
         paymentMode,
       )
       toast.success(`Sale ${sale.saleNumber} saved`)
+      setLastSale(sale)
+      setInvoiceOpen(true)
       setLines([])
       setPaymentMode('CASH')
       barcodeRef.current?.focus()
@@ -132,7 +144,13 @@ export function POSPage() {
                           <Minus className="size-3.5" />
                         </Button>
                         <span className="w-8 text-center tabular-nums">{l.qty}</span>
-                        <Button variant="outline" size="icon" className="size-7" onClick={() => changeQty(l.product.id, 1)}>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="size-7"
+                          disabled={l.qty >= (l.product.availableQty ?? Number.MAX_SAFE_INTEGER)}
+                          onClick={() => changeQty(l.product.id, 1)}
+                        >
                           <Plus className="size-3.5" />
                         </Button>
                       </div>
@@ -182,6 +200,30 @@ export function POSPage() {
           </div>
         </CardFooter>
       </Card>
+
+      <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Sale saved</DialogTitle>
+          </DialogHeader>
+          {lastSale && <InvoiceView sale={lastSale} />}
+          <DialogFooter className="no-print">
+            <Button variant="outline" onClick={() => setInvoiceOpen(false)}>
+              Done
+            </Button>
+            <Button
+              onClick={() => {
+                window.print()
+                setInvoiceOpen(false)
+                barcodeRef.current?.focus()
+              }}
+            >
+              <Printer className="size-4" />
+              Print invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

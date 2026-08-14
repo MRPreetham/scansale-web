@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { addByBarcode, changeQty, totals, type CartLine } from './cart'
 import type { Product } from '@/types/api'
 
-function product(id: string, price = 10): Product {
-  return { id, name: `P${id}`, barcode: id, lowStock: false, sellingPrice: price }
+function product(id: string, price = 10, availableQty?: number): Product {
+  return { id, name: `P${id}`, barcode: id, lowStock: false, sellingPrice: price, availableQty }
 }
 
 describe('cart', () => {
@@ -37,6 +37,20 @@ describe('cart', () => {
     let lines = addByBarcode([], product('a'))
     lines = changeQty(lines, 'a', -5)
     expect(lines).toHaveLength(0)
+  })
+
+  it('addByBarcode caps qty at available stock', () => {
+    const p = product('a', 10, 2)
+    let lines = addByBarcode(addByBarcode([], p), p)
+    expect(lines[0].qty).toBe(2)
+    lines = addByBarcode(lines, p)
+    expect(lines[0].qty).toBe(2)
+  })
+
+  it('changeQty caps qty at available stock', () => {
+    let lines = addByBarcode([], product('a', 10, 2))
+    lines = changeQty(lines, 'a', 10)
+    expect(lines[0].qty).toBe(2)
   })
 
   it('changeQty ignores unknown products', () => {

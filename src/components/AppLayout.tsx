@@ -18,7 +18,7 @@ const NAV: NavItem[] = [
   { to: '/pos', label: 'Counter', icon: ShoppingCart, roles: ['ADMIN', 'SALES'] },
   { to: '/products', label: 'Products', icon: Package },
   { to: '/imports', label: 'Import', icon: FileUp, roles: ['ADMIN', 'INVENTORY'] },
-  { to: '/reports', label: 'Daily Report', icon: BarChart3, roles: ['ADMIN', 'INVENTORY'] },
+  { to: '/reports', label: 'Report', icon: BarChart3, roles: ['ADMIN', 'INVENTORY'] },
   { to: '/settings', label: 'Settings', icon: Settings, roles: ['ADMIN'] },
   {
     to: '/platform/statistics',

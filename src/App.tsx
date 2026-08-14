@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { HomeRedirect, ProtectedRoute, RequirePlatform, RequireRoles } from '@/auth/guards'
 import { AppLayout } from '@/components/AppLayout'
 import { LoginPage } from '@/features/login/LoginPage'
+import { InvoicePage } from '@/features/invoice/InvoicePage'
 import { POSPage } from '@/features/pos/POSPage'
 import { ProductsPage } from '@/features/products/ProductsPage'
 import { ImportsPage } from '@/features/imports/ImportsPage'
@@ -17,6 +18,14 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/invoice/:saleId"
+          element={
+            <ProtectedRoute>
+              <InvoicePage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           element={
             <ProtectedRoute>

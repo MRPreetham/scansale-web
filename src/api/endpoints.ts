@@ -42,6 +42,7 @@ export const productApi = {
 
 export const saleApi = {
   list: () => api.get<Sale[]>('/sales').then((r) => r.data),
+  get: (id: string) => api.get<Sale>(`/sales/${id}`).then((r) => r.data),
   create: (lines: { barcode: string; qty: number }[], paymentMode: PaymentMode, notes?: string) =>
     api.post<Sale>('/sales', { lines, paymentMode, notes }).then((r) => r.data),
 }
@@ -63,12 +64,14 @@ export const importApi = {
 
 export const reportApi = {
   daily: (date: string) => api.get<DailyReport>('/reports/daily', { params: { date } }).then((r) => r.data),
+  period: (from: string, to: string) =>
+    api.get<DailyReport>('/reports/period', { params: { from, to } }).then((r) => r.data),
 }
 
 export const orgApi = {
   settings: () => api.get<Settings>('/organization/settings').then((r) => r.data),
-  updateSettings: (orgName?: string, currency?: string) =>
-    api.put<Settings>('/organization/settings', { orgName, currency }).then((r) => r.data),
+  updateSettings: (input: Partial<Settings>) =>
+    api.put<Settings>('/organization/settings', input).then((r) => r.data),
   users: () => api.get<OrgUser[]>('/organization/users').then((r) => r.data),
   addUser: (input: { email: string; name: string; password: string; role: string }) =>
     api.post<OrgUser>('/organization/users', input).then((r) => r.data),

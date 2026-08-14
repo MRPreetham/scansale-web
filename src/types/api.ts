@@ -23,7 +23,10 @@ export interface Product {
   name: string
   barcode: string
   unit?: string
+  costPrice?: number
   sellingPrice?: number
+  profitMargin?: number
+  size?: number
   openingQty?: number
   availableQty?: number
   reorderLevel?: number
@@ -45,7 +48,10 @@ export interface ProductInput {
   name: string
   barcode: string
   unit?: string
+  costPrice?: number
   sellingPrice?: number
+  profitMargin?: number
+  size?: number
   reorderLevel?: number
   openingQty?: number
   notes?: string
@@ -58,6 +64,17 @@ export interface SaleLine {
   qty: number
   unitPrice: number
   amount: number
+  unit?: string
+  size?: number
+}
+
+export interface ShopDetails {
+  name?: string
+  address?: string | null
+  phone?: string | null
+  email?: string | null
+  gstin?: string | null
+  currency?: string
 }
 
 export interface Sale {
@@ -70,6 +87,7 @@ export interface Sale {
   totalQty: number
   totalAmount: number
   lines: SaleLine[]
+  shop?: ShopDetails
 }
 
 export interface RowError {
@@ -135,6 +153,10 @@ export interface OrgUser {
 export interface Settings {
   orgName: string
   currency: string
+  address?: string | null
+  phone?: string | null
+  email?: string | null
+  gstin?: string | null
 }
 
 export interface OnboardOrgInput {

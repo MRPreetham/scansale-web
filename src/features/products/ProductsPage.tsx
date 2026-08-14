@@ -5,12 +5,20 @@ import { messageFromError } from '@/api/client'
 import { productApi } from '@/api/endpoints'
 import { useAuth } from '@/auth/context'
 import { formatMoney } from '@/lib/money'
+import { marginFromSelling, sellingFromMargin } from '@/lib/margin'
 import type { Product, ProductInput } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -30,13 +38,16 @@ import {
 
 type Mode = 'create' | 'edit' | 'adjust'
 
+const UNITS = ['ml']
+const SIZE_UNITS = ['ml']
+
 const EMPTY_FORM: ProductInput = {
   name: '',
   barcode: '',
   unit: 'pcs',
+  costPrice: 0,
   sellingPrice: 0,
-  reorderLevel: 0,
-  openingQty: 0,
+  profitMargin: 0,
   notes: '',
 }
 
@@ -54,7 +65,10 @@ export function ProductsPage() {
   const [dialog, setDialog] = useState<{ mode: Mode; product: Product | null } | null>(null)
   const [form, setForm] = useState<ProductInput>(EMPTY_FORM)
   const [adjustQty, setAdjustQty] = useState(0)
+  const [adjustQtyText, setAdjustQtyText] = useState('')
+  const [numText, setNumText] = useState({ costPrice: '', sellingPrice: '', profitMargin: '', size: '', qty: '' })
   const [saving, setSaving] = useState(false)
+  const [existing, setExisting] = useState<Product | null>(null)
   const PAGE_SIZE = 50
 
   const load = useCallback(async () => {
@@ -83,21 +97,55 @@ export function ProductsPage() {
     setPage(0)
   }, [query, lowOnly])
 
+  // In Add mode, check the entered barcode against the DB and show what already exists.
+  useEffect(() => {
+    if (dialog?.mode !== 'create') {
+      setExisting(null)
+      return
+    }
+    const barcode = form.barcode.trim()
+    if (!barcode) {
+      setExisting(null)
+      return
+    }
+    const timer = setTimeout(() => {
+      productApi
+        .getByBarcode(barcode)
+        .then((p) => setExisting(p))
+        .catch(() => setExisting(null))
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [dialog?.mode, form.barcode])
+
   function openDialog(mode: Mode, product: Product | null) {
     if (mode === 'adjust' && product) {
       setAdjustQty(product.availableQty ?? 0)
+      setAdjustQtyText(String(product.availableQty ?? 0))
     } else if (mode === 'edit' && product) {
+      const cost = product.costPrice ?? 0
+      const selling = product.sellingPrice ?? 0
+      const margin = marginFromSelling(cost, selling)
       setForm({
         name: product.name,
         barcode: product.barcode,
         unit: product.unit ?? 'pcs',
-        sellingPrice: product.sellingPrice ?? 0,
-        reorderLevel: product.reorderLevel ?? 0,
-        openingQty: product.openingQty ?? 0,
+        costPrice: cost,
+        sellingPrice: selling,
+        profitMargin: margin === null ? product.profitMargin ?? 0 : margin,
+        size: product.size,
+        openingQty: product.availableQty ?? 0,
         notes: product.notes ?? '',
+      })
+      setNumText({
+        costPrice: String(cost),
+        sellingPrice: String(selling),
+        profitMargin: String(marginFromSelling(cost, selling) ?? ''),
+        size: product.size == null ? '' : String(product.size),
+        qty: product.availableQty == null ? '' : String(product.availableQty),
       })
     } else {
       setForm(EMPTY_FORM)
+      setNumText({ costPrice: '', sellingPrice: '', profitMargin: '', size: '', qty: '' })
     }
     setDialog({ mode, product })
   }
@@ -136,6 +184,56 @@ export function ProductsPage() {
     }
   }
 
+  function onCostChange(text: string) {
+    const cost = text === '' ? 0 : Number(text)
+    const selling = numText.sellingPrice === '' ? null : Number(numText.sellingPrice)
+    const margin = numText.profitMargin === '' ? null : Number(numText.profitMargin)
+    let sellingText = numText.sellingPrice
+    let marginText = numText.profitMargin
+    if (selling !== null && !isNaN(selling)) {
+      const m = marginFromSelling(cost, selling)
+      marginText = m === null ? '' : String(m)
+    } else if (margin !== null && !isNaN(margin)) {
+      const s = sellingFromMargin(cost, margin)
+      sellingText = s === null ? '' : String(s)
+    }
+    setNumText({ ...numText, costPrice: text, sellingPrice: sellingText, profitMargin: marginText })
+    setForm({
+      ...form,
+      costPrice: cost,
+      sellingPrice: sellingText === '' ? 0 : Number(sellingText),
+      profitMargin: marginText === '' ? 0 : Number(marginText),
+    })
+  }
+
+  function onSellingChange(text: string) {
+    const selling = text === '' ? 0 : Number(text)
+    const cost = numText.costPrice === '' ? 0 : Number(numText.costPrice)
+    const m = text === '' ? null : marginFromSelling(cost, selling)
+    const marginText = m === null ? '' : String(m)
+    setNumText({ ...numText, sellingPrice: text, profitMargin: marginText })
+    setForm({ ...form, sellingPrice: selling, profitMargin: marginText === '' ? 0 : Number(marginText) })
+  }
+
+  function onMarginChange(text: string) {
+    const margin = text === '' ? 0 : Number(text)
+    const cost = numText.costPrice === '' ? 0 : Number(numText.costPrice)
+    const s = text === '' ? null : sellingFromMargin(cost, margin)
+    const sellingText = s === null ? '' : String(s)
+    setNumText({ ...numText, profitMargin: text, sellingPrice: sellingText })
+    setForm({ ...form, profitMargin: margin, sellingPrice: sellingText === '' ? 0 : Number(sellingText) })
+  }
+
+  function onSizeChange(text: string) {
+    setNumText((prev) => ({ ...prev, size: text }))
+    setForm((f) => ({ ...f, size: text === '' ? undefined : Number(text) }))
+  }
+
+  function onQtyChange(text: string) {
+    setNumText((prev) => ({ ...prev, qty: text }))
+    setForm((f) => ({ ...f, openingQty: text === '' ? 0 : Number(text) }))
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -165,7 +263,10 @@ export function ProductsPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Barcode</TableHead>
-                <TableHead className="text-right">Price</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
+                <TableHead className="text-right">Selling</TableHead>
+                <TableHead className="text-right">Profit margin</TableHead>
+                <TableHead className="text-right">Size</TableHead>
                 <TableHead className="text-right">Available</TableHead>
                 <TableHead>Stock</TableHead>
                 {canWrite && <TableHead className="w-32 text-right">Actions</TableHead>}
@@ -174,13 +275,13 @@ export function ProductsPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
               ) : products.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                     No products found
                   </TableCell>
                 </TableRow>
@@ -193,7 +294,16 @@ export function ProductsPage() {
                     </TableCell>
                     <TableCell className="font-mono text-xs">{p.barcode}</TableCell>
                     <TableCell className="text-right tabular-nums">
+                      {formatMoney(p.costPrice ?? 0, user?.currency)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
                       {formatMoney(p.sellingPrice ?? 0, user?.currency)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {p.profitMargin ?? 0}%
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {p.size == null ? '—' : `${p.size} ${p.unit ?? ''}`}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{p.availableQty ?? 0}</TableCell>
                     <TableCell>
@@ -274,8 +384,11 @@ export function ProductsPage() {
                   type="number"
                   min={0}
                   step="0.01"
-                  value={adjustQty}
-                  onChange={(e) => setAdjustQty(Number(e.target.value))}
+                  value={adjustQtyText}
+                  onChange={(e) => {
+                    setAdjustQtyText(e.target.value)
+                    setAdjustQty(Number(e.target.value))
+                  }}
                   required
                 />
               </div>
@@ -300,37 +413,100 @@ export function ProductsPage() {
                   <Input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} required />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Unit</Label>
-                  <Input value={form.unit ?? ''} onChange={(e) => setForm({ ...form, unit: e.target.value })} />
+                  <Label>Unit *</Label>
+                  <Select value={form.unit ?? 'pcs'} onValueChange={(v) => setForm({ ...form, unit: v })}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {UNITS.map((u) => (
+                        <SelectItem key={u} value={u}>
+                          {u}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Selling price</Label>
+                  <Label>Cost price (per unit) *</Label>
                   <Input
                     type="number"
                     min={0}
                     step="0.01"
-                    value={form.sellingPrice ?? 0}
-                    onChange={(e) => setForm({ ...form, sellingPrice: Number(e.target.value) })}
+                    placeholder="0.00"
+                    required
+                    value={numText.costPrice}
+                    onChange={(e) => onCostChange(e.target.value)}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Reorder level</Label>
+                  <Label>Selling price (per unit) *</Label>
                   <Input
                     type="number"
                     min={0}
-                    value={form.reorderLevel ?? 0}
-                    onChange={(e) => setForm({ ...form, reorderLevel: Number(e.target.value) })}
+                    step="0.01"
+                    placeholder="0.00"
+                    required
+                    value={numText.sellingPrice}
+                    onChange={(e) => onSellingChange(e.target.value)}
                   />
                 </div>
-                {dialog?.mode === 'create' && (
+                <div className="space-y-1.5">
+                  <Label>Profit margin (%) *</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    required
+                    value={numText.profitMargin}
+                    onChange={(e) => onMarginChange(e.target.value)}
+                  />
+                </div>
+                {SIZE_UNITS.includes(form.unit ?? 'pcs') && (
                   <div className="space-y-1.5">
-                    <Label>Opening quantity</Label>
+                    <Label>Size (in {form.unit}) *</Label>
                     <Input
                       type="number"
                       min={0}
-                      value={form.openingQty ?? 0}
-                      onChange={(e) => setForm({ ...form, openingQty: Number(e.target.value) })}
+                      step="0.001"
+                      placeholder="e.g. 750"
+                      required
+                      value={numText.size}
+                      onChange={(e) => onSizeChange(e.target.value)}
                     />
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label>Quantity *</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.001"
+                    placeholder="e.g. 100"
+                    required
+                    value={numText.qty}
+                    onChange={(e) => onQtyChange(e.target.value)}
+                  />
+                </div>
+                <div className="col-span-2 space-y-1.5">
+                  <Label>Notes</Label>
+                  <Input value={form.notes ?? ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                </div>
+                {dialog?.mode === 'create' && existing && (
+                  <div className="col-span-2 space-y-1 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+                    <p className="font-medium text-destructive">This barcode already exists in your inventory</p>
+                    <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
+                      <li>Name: {existing.name}</li>
+                      <li>Quantity: {existing.availableQty ?? 0}</li>
+                      <li>Cost: {formatMoney(existing.costPrice ?? 0, user?.currency)}</li>
+                      <li>Selling: {formatMoney(existing.sellingPrice ?? 0, user?.currency)}</li>
+                      <li>Profit margin: {existing.profitMargin ?? 0}%</li>
+                      <li>Size: {existing.size == null ? '—' : `${existing.size} ${existing.unit ?? ''}`}</li>
+                    </ul>
+                    <p>Edit that product instead of adding a duplicate.</p>
+                    <Button type="button" size="sm" className="mt-1" onClick={() => openDialog('edit', existing)}>
+                      Edit this product instead
+                    </Button>
                   </div>
                 )}
               </div>
@@ -338,7 +514,7 @@ export function ProductsPage() {
                 <Button type="button" variant="outline" onClick={() => setDialog(null)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={saving}>
+                <Button type="submit" disabled={saving || (dialog?.mode === 'create' && !!existing)}>
                   {saving ? 'Saving…' : 'Save'}
                 </Button>
               </DialogFooter>
