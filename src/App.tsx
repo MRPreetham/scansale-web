@@ -5,6 +5,7 @@ import { LoginPage } from '@/features/login/LoginPage'
 import { InvoicePage } from '@/features/invoice/InvoicePage'
 import { POSPage } from '@/features/pos/POSPage'
 import { ProductsPage } from '@/features/products/ProductsPage'
+import { SalesPage } from '@/features/sales/SalesPage'
 import { ImportsPage } from '@/features/imports/ImportsPage'
 import { ReportsPage } from '@/features/reports/ReportsPage'
 import { SettingsPage } from '@/features/settings/SettingsPage'
@@ -43,6 +44,14 @@ export default function App() {
             }
           />
           <Route path="/products" element={<ProductsPage />} />
+          <Route
+            path="/sales"
+            element={
+              <RequireRoles roles={['ADMIN', 'SALES']}>
+                <SalesPage />
+              </RequireRoles>
+            }
+          />
           <Route
             path="/imports"
             element={

@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Minus, Plus, Printer, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { History, Minus, Plus, Printer, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { messageFromError } from '@/api/client'
 import { productApi, saleApi } from '@/api/endpoints'
 import { useAuth } from '@/auth/context'
 import { formatMoney } from '@/lib/money'
-import { addByBarcode as addToCart, changeQty as changeCartQty, totals, type CartLine } from '@/features/pos/cart'
+import { useCart } from '@/features/pos/CartContext'
 import { barcodeKey } from '@/features/pos/barcode'
 import type { PaymentMode, Product, Sale } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -26,8 +28,10 @@ const PAYMENT_MODES: PaymentMode[] = ['CASH', 'UPI', 'CARD', 'CREDIT']
 
 export function POSPage() {
   const { user } = useAuth()
+  const cart = useCart()
+  const { lines } = cart
+  const navigate = useNavigate()
   const currency = user?.currency
-  const [lines, setLines] = useState<CartLine[]>([])
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH')
   const [saving, setSaving] = useState(false)
   const [lookupError, setLookupError] = useState('')
@@ -36,6 +40,8 @@ export function POSPage() {
   const barcodeRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState<Product[]>([])
+  const [qtyTarget, setQtyTarget] = useState<Product | null>(null)
+  const [qtyInput, setQtyInput] = useState('1')
 
   useEffect(() => {
     const q = query.trim()
@@ -54,11 +60,15 @@ export function POSPage() {
     return () => clearTimeout(timer)
   }, [query])
 
+  function openQtyDialog(product: Product) {
+    setQtyTarget(product)
+    setQtyInput('1')
+  }
+
   function pickProduct(product: Product) {
-    setLines((prev) => addToCart(prev, product))
+    openQtyDialog(product)
     setQuery('')
     setSuggestions([])
-    barcodeRef.current?.focus()
   }
 
   const addByCode = useCallback(
@@ -72,7 +82,7 @@ export function POSPage() {
           toast.error(`"${product.name}" is out of stock`)
           return
         }
-        setLines((prev) => addToCart(prev, product))
+        openQtyDialog(product)
       } catch (error) {
         setLookupError(messageFromError(error))
       } finally {
@@ -103,7 +113,16 @@ export function POSPage() {
   }, [addByCode])
 
   function changeQty(id: string, delta: number) {
-    setLines((prev) => changeCartQty(prev, id, delta))
+    cart.adjust(id, delta)
+  }
+
+  function confirmQty() {
+    if (!qtyTarget) return
+    const qty = Math.floor(Number(qtyInput) || 1)
+    cart.add(qtyTarget, qty)
+    setQtyTarget(null)
+    setQtyInput('1')
+    barcodeRef.current?.focus()
   }
 
   async function saveSale() {
@@ -117,7 +136,7 @@ export function POSPage() {
       toast.success(`Sale ${sale.saleNumber} saved`)
       setLastSale(sale)
       setInvoiceOpen(true)
-      setLines([])
+      cart.clear()
       setPaymentMode('CASH')
       barcodeRef.current?.focus()
     } catch (error) {
@@ -127,7 +146,8 @@ export function POSPage() {
     }
   }
 
-  const { qty: totalQty, amount: totalAmount } = totals(lines)
+  const { qty: totalQty, amount: totalAmount } = cart.totals
+  const pendingQty = Math.max(1, Math.floor(Number(qtyInput) || 1))
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -191,6 +211,10 @@ export function POSPage() {
               setSuggestions([])
             }}>
               Add
+            </Button>
+            <Button variant="outline" size="lg" className="h-12" onClick={() => navigate('/sales')}>
+              <History className="size-4" />
+              Sales
             </Button>
           </div>
           {lookupError && <p className="text-sm text-destructive">{lookupError}</p>}
@@ -283,6 +307,57 @@ export function POSPage() {
           </div>
         </CardFooter>
       </Card>
+
+      <Dialog open={qtyTarget !== null} onOpenChange={(open) => {
+        if (!open) {
+          setQtyTarget(null)
+          barcodeRef.current?.focus()
+        }
+      }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Quantity for sale</DialogTitle>
+          </DialogHeader>
+          {qtyTarget && (
+            <div className="space-y-4">
+              <div>
+                <p className="font-medium">{qtyTarget.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {formatMoney(qtyTarget.sellingPrice ?? 0, currency)} ·{' '}
+                  {qtyTarget.availableQty ?? 0} in stock
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sale-qty">Number of items</Label>
+                <Input
+                  id="sale-qty"
+                  type="number"
+                  min={1}
+                  max={qtyTarget.availableQty ?? undefined}
+                  value={qtyInput}
+                  autoFocus
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setQtyInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') confirmQty()
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQtyTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmQty}
+              disabled={!qtyTarget || (Number(qtyInput) || 0) < 1}
+            >
+              Add {pendingQty} · {formatMoney(pendingQty * (qtyTarget?.sellingPrice ?? 0), currency)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">

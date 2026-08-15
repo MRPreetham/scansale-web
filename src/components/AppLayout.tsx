@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { LogOut, ShoppingCart, Package, FileUp, BarChart3, Settings, Building2, LayoutDashboard, Users } from 'lucide-react'
 import { useAuth } from '@/auth/context'
+import { CartProvider } from '@/features/pos/CartContext'
 import { cn } from '@/lib/utils'
 import type { OrgRole, PlatformRole } from '@/types/api'
 
@@ -123,7 +124,9 @@ export function AppLayout() {
         </div>
       </aside>
       <main className="flex-1 overflow-auto bg-background p-6">
-        <Outlet />
+        <CartProvider>
+          <Outlet />
+        </CartProvider>
       </main>
     </div>
   )

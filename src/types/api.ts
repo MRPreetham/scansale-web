@@ -4,6 +4,14 @@ export type OrgStatus = 'ACTIVE' | 'SUSPENDED' | 'PENDING'
 export type PaymentMode = 'CASH' | 'UPI' | 'CARD' | 'CREDIT'
 export type ImportStatus = 'PENDING' | 'COMMITTED' | 'REJECTED'
 
+export interface ColumnMapping {
+  barcode?: string
+  name?: string
+  unit?: string
+  price?: string
+  qty?: string
+}
+
 export interface AuthResponse {
   token: string
   userId: string
@@ -27,7 +35,7 @@ export interface Product {
   sellingPrice?: number
   profitMargin?: number
   size?: number
-  openingQty?: number
+  quantity?: number
   availableQty?: number
   reorderLevel?: number
   lowStock: boolean
@@ -53,7 +61,7 @@ export interface ProductInput {
   profitMargin?: number
   size?: number
   reorderLevel?: number
-  openingQty?: number
+  quantity?: number
   notes?: string
 }
 
@@ -88,6 +96,13 @@ export interface Sale {
   totalAmount: number
   lines: SaleLine[]
   shop?: ShopDetails
+}
+
+export interface SalePage {
+  items: Sale[]
+  total: number
+  page: number
+  size: number
 }
 
 export interface RowError {

@@ -1,11 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { FileUp, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { messageFromError } from '@/api/client'
 import { importApi } from '@/api/endpoints'
-import type { ImportHistory, ImportPreview } from '@/types/api'
+import { FIELD_LABELS, MAPPING_FIELDS, detectMapping, readCsvColumns, type MappingField } from '@/features/imports/csvMapping'
+import type { ColumnMapping, ImportHistory, ImportPreview } from '@/types/api'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -16,9 +25,14 @@ import {
 } from '@/components/ui/table'
 
 const PAGE_SIZE = 50
+const NONE = '__none__'
 
 export function ImportsPage() {
   const [file, setFile] = useState<File | null>(null)
+  const [fileHeaders, setFileHeaders] = useState<string[]>([])
+  const [fileSample, setFileSample] = useState<string[]>([])
+  const [mapping, setMapping] = useState<ColumnMapping>({})
+  const [carton, setCarton] = useState(false)
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [committed, setCommitted] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -41,12 +55,31 @@ export function ImportsPage() {
     void loadHistory()
   }, [loadHistory])
 
+  async function onFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const selected = e.target.files?.[0] ?? null
+    setFile(selected)
+    setPreview(null)
+    setCommitted(false)
+    if (selected) {
+      const { headers, sample } = await readCsvColumns(selected)
+      setFileHeaders(headers)
+      setFileSample(sample)
+      setMapping(detectMapping(headers))
+      setCarton(false)
+    } else {
+      setFileHeaders([])
+      setFileSample([])
+      setMapping({})
+      setCarton(false)
+    }
+  }
+
   async function handlePreview() {
-    if (!file) return
+    if (!file || !mapping.barcode) return
     setBusy(true)
     setCommitted(false)
     try {
-      setPreview(await importApi.preview(file))
+      setPreview(await importApi.preview(file, mapping, carton))
     } catch (error) {
       toast.error(messageFromError(error))
     } finally {
@@ -85,10 +118,7 @@ export function ImportsPage() {
               type="file"
               accept=".csv,text/csv"
               className="hidden"
-              onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null)
-                setPreview(null)
-              }}
+              onChange={(e) => void onFileChange(e)}
             />
             <Button
               type="button"
@@ -107,20 +137,91 @@ export function ImportsPage() {
                 onClick={() => {
                   setFile(null)
                   setPreview(null)
+                  setFileHeaders([])
+                  setFileSample([])
+                  setMapping({})
+                  setCarton(false)
                   if (inputRef.current) inputRef.current.value = ''
                 }}
               >
                 Clear
               </Button>
             )}
-            <Button onClick={() => void handlePreview()} disabled={!file || busy}>
-              Preview
-            </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Upload a CSV with barcode, name, unit, price and qty columns. Existing barcodes get
-            their stock increased; new barcodes create a product.
+            Upload a supplier CSV, map its columns, then preview before committing. Existing
+            barcodes get their stock increased; new barcodes create a product.
           </p>
+
+          {file && !preview && (
+            <div className="space-y-3 rounded-md border p-4">
+              <div>
+                <p className="font-medium">Map columns</p>
+                <p className="text-xs text-muted-foreground">
+                  Match each file column to a field. Barcode is required.
+                </p>
+              </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={carton}
+                  onChange={(e) => setCarton(e.target.checked)}
+                />
+                <span>
+                  Price is per <strong>carton</strong> — compute per-piece price from the count in
+                  the Name (e.g. <code>180MLx48Btls</code>) and add stock as qty × bottles.
+                </span>
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {MAPPING_FIELDS.map((field: MappingField) => {
+                  const mappedHeader = mapping[field]
+                  const sampleIndex = mappedHeader ? fileHeaders.indexOf(mappedHeader) : -1
+                  const sample = sampleIndex >= 0 ? fileSample[sampleIndex] : undefined
+                  return (
+                    <div key={field} className="space-y-1.5">
+                      <Label>
+                        {FIELD_LABELS[field]}
+                        {field === 'barcode' ? ' *' : ''}
+                      </Label>
+                      <Select
+                        value={mappedHeader ?? NONE}
+                        onValueChange={(v) =>
+                          setMapping((m) => ({ ...m, [field]: v === NONE ? undefined : v }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Not used" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE}>Not used</SelectItem>
+                          {fileHeaders.map((h) => (
+                            <SelectItem key={h} value={h}>
+                              {h}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {mappedHeader
+                          ? sample
+                            ? `e.g. ${sample}`
+                            : `e.g. —`
+                          : 'Not used'}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+              <Button onClick={() => void handlePreview()} disabled={!mapping.barcode || busy}>
+                <FileUp className="size-4" />
+                {busy ? 'Working…' : 'Confirm mapping & preview'}
+              </Button>
+              {!mapping.barcode && (
+                <p className="text-xs text-muted-foreground">Select a barcode column to continue.</p>
+              )}
+            </div>
+          )}
 
           {preview && (
             <div className="space-y-3 rounded-md border p-4">

@@ -133,7 +133,7 @@ export function ProductsPage() {
         sellingPrice: selling,
         profitMargin: margin === null ? product.profitMargin ?? 0 : margin,
         size: product.size,
-        openingQty: product.availableQty ?? 0,
+        quantity: product.availableQty ?? 0,
         notes: product.notes ?? '',
       })
       setNumText({
@@ -231,7 +231,7 @@ export function ProductsPage() {
 
   function onQtyChange(text: string) {
     setNumText((prev) => ({ ...prev, qty: text }))
-    setForm((f) => ({ ...f, openingQty: text === '' ? 0 : Number(text) }))
+    setForm((f) => ({ ...f, quantity: text === '' ? 0 : Number(text) }))
   }
 
   return (
@@ -477,7 +477,7 @@ export function ProductsPage() {
                   </div>
                 )}
                 <div className="space-y-1.5">
-                  <Label>Quantity *</Label>
+                  <Label>Stock *</Label>
                   <Input
                     type="number"
                     min={0}

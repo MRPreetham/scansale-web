@@ -15,6 +15,17 @@ export function addByBarcode(lines: CartLine[], product: Product): CartLine[] {
   return [...lines, { product, qty: 1 }]
 }
 
+export function addQty(lines: CartLine[], product: Product, qty: number): CartLine[] {
+  if (qty <= 0) return lines
+  const max = product.availableQty ?? Number.MAX_SAFE_INTEGER
+  const existing = lines.find((l) => l.product.id === product.id)
+  if (existing) {
+    const next = Math.min(existing.qty + qty, max)
+    return lines.map((l) => (l.product.id === product.id ? { ...l, qty: next } : l))
+  }
+  return [...lines, { product, qty: Math.min(qty, max) }]
+}
+
 export function changeQty(lines: CartLine[], productId: string, delta: number): CartLine[] {
   return lines.flatMap((l) => {
     if (l.product.id !== productId) return [l]

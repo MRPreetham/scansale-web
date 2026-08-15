@@ -1,6 +1,7 @@
 import { api } from './client'
 import type {
   AuthResponse,
+  ColumnMapping,
   CreatePlatformUserInput,
   DailyReport,
   ImportHistoryPage,
@@ -15,6 +16,7 @@ import type {
   ProductInput,
   ProductPage,
   Sale,
+  SalePage,
   Settings,
   UpdateAdminInput,
   UpdatePlatformUserInput,
@@ -41,16 +43,19 @@ export const productApi = {
 }
 
 export const saleApi = {
-  list: () => api.get<Sale[]>('/sales').then((r) => r.data),
+  list: (params?: { page?: number; size?: number }) =>
+    api.get<SalePage>('/sales', { params }).then((r) => r.data),
   get: (id: string) => api.get<Sale>(`/sales/${id}`).then((r) => r.data),
   create: (lines: { barcode: string; qty: number }[], paymentMode: PaymentMode, notes?: string) =>
     api.post<Sale>('/sales', { lines, paymentMode, notes }).then((r) => r.data),
 }
 
 export const importApi = {
-  preview: (file: File) => {
+  preview: (file: File, mapping?: ColumnMapping, carton = false) => {
     const form = new FormData()
     form.append('file', file)
+    if (mapping) form.append('mapping', JSON.stringify(mapping))
+    if (carton) form.append('carton', 'true')
     return api
       .post<ImportPreview>('/imports/preview', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
