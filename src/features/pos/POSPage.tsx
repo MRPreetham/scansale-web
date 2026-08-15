@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Minus, Plus, Printer, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { messageFromError } from '@/api/client'
@@ -6,7 +6,8 @@ import { productApi, saleApi } from '@/api/endpoints'
 import { useAuth } from '@/auth/context'
 import { formatMoney } from '@/lib/money'
 import { addByBarcode as addToCart, changeQty as changeCartQty, totals, type CartLine } from '@/features/pos/cart'
-import type { PaymentMode, Sale } from '@/types/api'
+import { barcodeKey } from '@/features/pos/barcode'
+import type { PaymentMode, Product, Sale } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
@@ -33,6 +34,32 @@ export function POSPage() {
   const [lastSale, setLastSale] = useState<Sale | null>(null)
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const barcodeRef = useRef<HTMLInputElement>(null)
+  const [query, setQuery] = useState('')
+  const [suggestions, setSuggestions] = useState<Product[]>([])
+
+  useEffect(() => {
+    const q = query.trim()
+    if (!q) {
+      setSuggestions([])
+      return
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const page = await productApi.list({ q, size: 8 })
+        setSuggestions(page.items.filter((p) => p.availableQty !== undefined && p.availableQty > 0))
+      } catch {
+        setSuggestions([])
+      }
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [query])
+
+  function pickProduct(product: Product) {
+    setLines((prev) => addToCart(prev, product))
+    setQuery('')
+    setSuggestions([])
+    barcodeRef.current?.focus()
+  }
 
   const addByCode = useCallback(
     async (barcode: string) => {
@@ -54,6 +81,26 @@ export function POSPage() {
     },
     [],
   )
+
+  const scanBufferRef = useRef('')
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null
+      const editable =
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.tagName === 'SELECT'
+      const result = barcodeKey(scanBufferRef.current, e.key, editable)
+      scanBufferRef.current = result.buffer
+      if (timeout) clearTimeout(timeout)
+      if (result.buffer) timeout = setTimeout(() => (scanBufferRef.current = ''), 200)
+      if (result.submit) void addByCode(result.submit)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      if (timeout) clearTimeout(timeout)
+    }
+  }, [addByCode])
 
   function changeQty(id: string, delta: number) {
     setLines((prev) => changeCartQty(prev, id, delta))
@@ -86,26 +133,62 @@ export function POSPage() {
     <div className="flex h-full flex-col gap-4">
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex items-center gap-2">
-            <Input
-              ref={barcodeRef}
-              placeholder="Scan or type barcode…"
-              className="h-12 text-lg"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  void addByCode((e.target as HTMLInputElement).value)
-                  ;(e.target as HTMLInputElement).value = ''
-                }
-              }}
-            />
+          <div className="relative flex items-center gap-2">
+            <div className="relative flex-1">
+              <Input
+                ref={barcodeRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Scan or type barcode / name…"
+                className="h-12 text-lg"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const code = query.trim()
+                    const exact = suggestions.find((p) => p.barcode === code)
+                    if (exact) {
+                      pickProduct(exact)
+                    } else if (suggestions.length > 0) {
+                      pickProduct(suggestions[0])
+                    } else {
+                      void addByCode(code)
+                    }
+                  } else if (e.key === 'ArrowDown' && suggestions.length > 0) {
+                    e.preventDefault()
+                    pickProduct(suggestions[0])
+                  }
+                }}
+              />
+              {query.trim() && suggestions.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border bg-popover shadow-lg">
+                  {suggestions.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        pickProduct(p)
+                      }}
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-accent"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">{p.name}</span>
+                        <span className="block text-xs text-muted-foreground">{p.barcode}</span>
+                      </span>
+                      <span className="shrink-0 text-sm tabular-nums">
+                        {formatMoney(p.sellingPrice ?? 0, currency)} · {p.availableQty ?? 0} left
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <Button size="lg" className="h-12" onClick={() => {
-              const input = barcodeRef.current
-              if (input) {
-                void addByCode(input.value)
-                input.value = ''
-              }
+              const code = query.trim()
+              void addByCode(code)
+              setQuery('')
+              setSuggestions([])
             }}>
               Add
             </Button>
